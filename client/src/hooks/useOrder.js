@@ -1,329 +1,121 @@
-import { useState, useCallback, useContext } from 'react';
-import { StoreContext } from '../context/StoreContext';
-import { orderService } from '../services/order';
+import { useState, useEffect } from 'react';
+import api from '../services/api';
+import { toast } from 'react-toastify';
 
-/**
- * خطاف لإدارة الطلبات
- * يوفر وظائف وبيانات الطلبات
- * @returns {Object} كائن يحتوي على بيانات ووظائف الطلبات
- */
 const useOrder = () => {
-  const { activeStore } = useContext(StoreContext);
-  
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [filters, setFilters] = useState({
+    page: 1,
+    limit: 10,
+    status: '',
     search: '',
-    status: 'all', // all, pending, processing, completed, cancelled, refunded
-    dateRange: { start: null, end: null },
-    customer: '',
-    sortBy: 'date', // date, order_id, customer, total
-    sortDirection: 'desc',
+    startDate: '',
+    endDate: '',
+    marketplace: '',
   });
   const [pagination, setPagination] = useState({
-    currentPage: 1,
-    totalPages: 1,
-    totalItems: 0,
-    itemsPerPage: 25
+    total: 0,
+    pages: 0,
   });
 
-  /**
-   * جلب قائمة الطلبات
-   * @param {string} storeId - معرف المتجر (اختياري)
-   * @param {number} page - رقم الصفحة
-   * @param {Object} filterParams - معايير الفلترة
-   * @returns {Object} البيانات مع معلومات الصفحات
-   */
-  const fetchOrders = useCallback(async (storeId = null, page = 1, filterParams = null) => {
+  const fetchOrders = async () => {
     try {
       setLoading(true);
-      setError(null);
-      
-      // استخدام المتجر النشط إذا لم يتم تحديد متجر
-      const targetStoreId = storeId || (activeStore ? activeStore.id : null);
-      
-      if (!targetStoreId) {
-        throw new Error('لم يتم تحديد متجر لجلب الطلبات');
-      }
-      
-      // استخدام الفلاتر الحالية إذا لم يتم تحديد فلاتر
-      const queryParams = filterParams || filters;
-      
-      // إضافة معلومات الصفحة
-      const params = {
-        ...queryParams,
-        page,
-        limit: pagination.itemsPerPage
-      };
-      
-      const response = await orderService.getOrders(targetStoreId, params);
-      
-      setOrders(response.orders);
-      setPagination(response.pagination);
-      
-      return response;
-    } catch (err) {
-      setError(err.message || 'فشل جلب الطلبات');
-      return { orders: [], pagination: { currentPage: 1, totalPages: 1, totalItems: 0, itemsPerPage: 25 } };
-    } finally {
-      setLoading(false);
-    }
-  }, [activeStore, filters, pagination.itemsPerPage]);
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value) params.append(key, value);
+      });
 
-  /**
-   * جلب تفاصيل طلب واحد
-   * @param {string} orderId - معرف الطلب
-   * @param {string} storeId - معرف المتجر (اختياري)
-   * @returns {Object} بيانات الطلب
-   */
-  const getOrderDetails = async (orderId, storeId = null) => {
-    try {
-      setLoading(true);
+      const response = await api.get(`/orders?${params.toString()}`);
+      setOrders(response.data.orders);
+      setPagination({
+        total: response.data.total,
+        pages: response.data.pages,
+      });
       setError(null);
-      
-      // استخدام المتجر النشط إذا لم يتم تحديد متجر
-      const targetStoreId = storeId || (activeStore ? activeStore.id : null);
-      
-      if (!targetStoreId) {
-        throw new Error('لم يتم تحديد متجر لجلب تفاصيل الطلب');
-      }
-      
-      const order = await orderService.getOrderById(targetStoreId, orderId);
-      return order;
     } catch (err) {
-      setError(err.message || 'فشل جلب تفاصيل الطلب');
-      return null;
+      setError('فشل في تحميل الطلبات');
+      toast.error('فشل في تحميل الطلبات');
     } finally {
       setLoading(false);
     }
   };
 
-  /**
-   * تحديث حالة الطلب
-   * @param {string} orderId - معرف الطلب
-   * @param {string} status - الحالة الجديدة
-   * @param {string} storeId - معرف المتجر (اختياري)
-   * @returns {Object} البيانات المحدثة
-   */
-  const updateOrderStatus = async (orderId, status, storeId = null) => {
+  const getOrder = async (orderId) => {
     try {
-      setLoading(true);
-      setError(null);
-      
-      // استخدام المتجر النشط إذا لم يتم تحديد متجر
-      const targetStoreId = storeId || (activeStore ? activeStore.id : null);
-      
-      if (!targetStoreId) {
-        throw new Error('لم يتم تحديد متجر لتحديث حالة الطلب');
-      }
-      
-      const updatedOrder = await orderService.updateOrderStatus(targetStoreId, orderId, status);
-      
-      // تحديث القائمة المحلية
-      setOrders(prevOrders => prevOrders.map(order => 
-        order.id === orderId ? { ...order, status: updatedOrder.status } : order
-      ));
-      
-      return updatedOrder;
+      const response = await api.get(`/orders/${orderId}`);
+      return response.data;
     } catch (err) {
-      setError(err.message || 'فشل تحديث حالة الطلب');
-      return null;
-    } finally {
-      setLoading(false);
+      toast.error('فشل في تحميل تفاصيل الطلب');
+      throw err;
     }
   };
 
-  /**
-   * إضافة ملاحظة للطلب
-   * @param {string} orderId - معرف الطلب
-   * @param {string} note - نص الملاحظة
-   * @param {boolean} isPrivate - هل الملاحظة خاصة بالإدارة فقط
-   * @param {string} storeId - معرف المتجر (اختياري)
-   * @returns {Object} البيانات المحدثة
-   */
-  const addOrderNote = async (orderId, note, isPrivate = true, storeId = null) => {
+  const updateOrderStatus = async (orderId, status) => {
     try {
-      setLoading(true);
-      setError(null);
-      
-      // استخدام المتجر النشط إذا لم يتم تحديد متجر
-      const targetStoreId = storeId || (activeStore ? activeStore.id : null);
-      
-      if (!targetStoreId) {
-        throw new Error('لم يتم تحديد متجر لإضافة ملاحظة للطلب');
-      }
-      
-      const updatedOrder = await orderService.addOrderNote(targetStoreId, orderId, note, isPrivate);
-      return updatedOrder;
+      const response = await api.put(`/orders/${orderId}/status`, { status });
+      toast.success('تم تحديث حالة الطلب بنجاح');
+      return response.data;
     } catch (err) {
-      setError(err.message || 'فشل إضافة ملاحظة للطلب');
-      return null;
-    } finally {
-      setLoading(false);
+      toast.error('فشل في تحديث حالة الطلب');
+      throw err;
     }
   };
 
-  /**
-   * تأكيد شحن الطلب
-   * @param {string} orderId - معرف الطلب
-   * @param {Object} shippingData - بيانات الشحن
-   * @param {string} storeId - معرف المتجر (اختياري)
-   * @returns {Object} بيانات الشحن
-   */
-  const fulfillOrder = async (orderId, shippingData, storeId = null) => {
+  const shipOrder = async (orderId, shipmentData) => {
     try {
-      setLoading(true);
-      setError(null);
-      
-      // استخدام المتجر النشط إذا لم يتم تحديد متجر
-      const targetStoreId = storeId || (activeStore ? activeStore.id : null);
-      
-      if (!targetStoreId) {
-        throw new Error('لم يتم تحديد متجر لتأكيد شحن الطلب');
-      }
-      
-      const fulfillment = await orderService.fulfillOrder(targetStoreId, orderId, shippingData);
-      
-      // تحديث القائمة المحلية
-      setOrders(prevOrders => prevOrders.map(order => 
-        order.id === orderId ? { ...order, status: 'completed', fulfillment } : order
-      ));
-      
-      return fulfillment;
+      const response = await api.post(`/orders/${orderId}/ship`, shipmentData);
+      toast.success('تم شحن الطلب بنجاح');
+      return response.data;
     } catch (err) {
-      setError(err.message || 'فشل تأكيد شحن الطلب');
-      return null;
-    } finally {
-      setLoading(false);
+      toast.error('فشل في شحن الطلب');
+      throw err;
     }
   };
 
-  /**
-   * إلغاء الطلب
-   * @param {string} orderId - معرف الطلب
-   * @param {string} reason - سبب الإلغاء
-   * @param {string} storeId - معرف المتجر (اختياري)
-   * @returns {Object} البيانات المحدثة
-   */
-  const cancelOrder = async (orderId, reason, storeId = null) => {
+  const getOrderShipment = async (orderId) => {
     try {
-      setLoading(true);
-      setError(null);
-      
-      // استخدام المتجر النشط إذا لم يتم تحديد متجر
-      const targetStoreId = storeId || (activeStore ? activeStore.id : null);
-      
-      if (!targetStoreId) {
-        throw new Error('لم يتم تحديد متجر لإلغاء الطلب');
-      }
-      
-      const cancelledOrder = await orderService.cancelOrder(targetStoreId, orderId, reason);
-      
-      // تحديث القائمة المحلية
-      setOrders(prevOrders => prevOrders.map(order => 
-        order.id === orderId ? { ...order, status: 'cancelled' } : order
-      ));
-      
-      return cancelledOrder;
+      const response = await api.get(`/orders/${orderId}/shipment`);
+      return response.data;
     } catch (err) {
-      setError(err.message || 'فشل إلغاء الطلب');
       return null;
-    } finally {
-      setLoading(false);
     }
   };
 
-  /**
-   * تصدير الطلبات
-   * @param {string} format - صيغة التصدير (csv, pdf, excel)
-   * @param {Object} exportFilters - معايير فلترة الطلبات المصدرة
-   * @param {string} storeId - معرف المتجر (اختياري)
-   * @returns {Object} رابط تحميل الملف المصدر
-   */
-  const exportOrders = async (format = 'csv', exportFilters = null, storeId = null) => {
+  const exportOrders = async () => {
     try {
-      setLoading(true);
-      setError(null);
+      const response = await api.get('/orders/export', {
+        responseType: 'blob',
+        params: filters,
+      });
       
-      // استخدام المتجر النشط إذا لم يتم تحديد متجر
-      const targetStoreId = storeId || (activeStore ? activeStore.id : null);
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `orders_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
       
-      if (!targetStoreId) {
-        throw new Error('لم يتم تحديد متجر لتصدير الطلبات');
-      }
-      
-      // استخدام الفلاتر الحالية إذا لم يتم تحديد فلاتر
-      const filterParams = exportFilters || filters;
-      
-      const exportResult = await orderService.exportOrders(targetStoreId, format, filterParams);
-      return exportResult;
+      toast.success('تم تصدير الطلبات بنجاح');
     } catch (err) {
-      setError(err.message || 'فشل تصدير الطلبات');
-      return null;
-    } finally {
-      setLoading(false);
+      toast.error('فشل في تصدير الطلبات');
     }
   };
 
-  /**
-   * جلب إحصائيات الطلبات
-   * @param {Object} dateRange - نطاق التاريخ
-   * @param {string} storeId - معرف المتجر (اختياري)
-   * @returns {Object} الإحصائيات
-   */
-  const getOrderStatistics = async (dateRange = { start: null, end: null }, storeId = null) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // استخدام المتجر النشط إذا لم يتم تحديد متجر
-      const targetStoreId = storeId || (activeStore ? activeStore.id : null);
-      
-      if (!targetStoreId) {
-        throw new Error('لم يتم تحديد متجر لجلب إحصائيات الطلبات');
-      }
-      
-      const statistics = await orderService.getOrderStatistics(targetStoreId, dateRange);
-      return statistics;
-    } catch (err) {
-      setError(err.message || 'فشل جلب إحصائيات الطلبات');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /**
-   * تحديث إعدادات الفلترة
-   * @param {Object} newFilters - إعدادات الفلترة الجديدة
-   */
   const updateFilters = (newFilters) => {
-    setFilters(prev => ({ ...prev, ...newFilters }));
-    setPagination(prev => ({ ...prev, currentPage: 1 }));
+    setFilters(prev => ({
+      ...prev,
+      ...newFilters,
+    }));
   };
 
-  /**
-   * تحديث الصفحة الحالية
-   * @param {number} page - رقم الصفحة
-   */
-  const updateCurrentPage = (page) => {
-    setPagination(prev => ({ ...prev, currentPage: page }));
-    fetchOrders(activeStore?.id, page);
-  };
-
-  /**
-   * تغيير عدد العناصر في الصفحة
-   * @param {number} itemsPerPage - عدد العناصر في الصفحة
-   */
-  const updateItemsPerPage = (itemsPerPage) => {
-    setPagination(prev => ({ ...prev, itemsPerPage, currentPage: 1 }));
-  };
-
-  /**
-   * مسح الخطأ
-   */
-  const clearError = () => setError(null);
+  useEffect(() => {
+    fetchOrders();
+  }, [filters]);
 
   return {
     orders,
@@ -332,17 +124,12 @@ const useOrder = () => {
     filters,
     pagination,
     fetchOrders,
-    getOrderDetails,
+    getOrder,
     updateOrderStatus,
-    addOrderNote,
-    fulfillOrder,
-    cancelOrder,
+    shipOrder,
+    getOrderShipment,
     exportOrders,
-    getOrderStatistics,
     updateFilters,
-    updateCurrentPage,
-    updateItemsPerPage,
-    clearError
   };
 };
 

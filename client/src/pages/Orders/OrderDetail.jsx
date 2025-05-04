@@ -1,118 +1,127 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { toast } from 'react-toastify';
+import useOrder from '../../hooks/useOrder';
 import Layout from '../../components/layout/Layout';
-import { Button } from '../../components/common/Button';
-import { Alert } from '../../components/common/Alert';
-import { Loader } from '../../components/common/Loader';
-import { Modal } from '../../components/common/Modal';
-import { useOrder } from '../../hooks/useOrder';
-import FulfillmentForm from '../../components/orders/FulfillmentForm';
+import { Loader, Alert } from '../../components/common';
+import { format } from 'date-fns';
+import { ar } from 'date-fns/locale';
+import { FiArrowRight, FiPackage, FiTruck, FiCheckCircle, FiXCircle } from 'react-icons/fi';
 
 const OrderDetail = () => {
-  const { orderId } = useParams();
+  const { id } = useParams();
   const navigate = useNavigate();
+  const { getOrder, updateOrderStatus, getOrderShipment } = useOrder();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [showFulfillmentModal, setShowFulfillmentModal] = useState(false);
-  const [updateLoading, setUpdateLoading] = useState(false);
-  
-  const { getOrder, updateOrderStatus, createFulfillment } = useOrder();
+  const [error, setError] = useState(null);
+  const [shipment, setShipment] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
-    const fetchOrder = async () => {
-      try {
-        setLoading(true);
-        setError('');
-        const orderData = await getOrder(orderId);
-        setOrder(orderData);
-      } catch (err) {
-        setError('فشل تحميل تفاصيل الطلب');
-        console.error('Order fetch error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
+    fetchOrderDetails();
+  }, [id]);
 
-    fetchOrder();
-  }, [orderId, getOrder]);
+  const fetchOrderDetails = async () => {
+    try {
+      setLoading(true);
+      const [orderData, shipmentData] = await Promise.all([
+        getOrder(id),
+        getOrderShipment(id)
+      ]);
+      setOrder(orderData);
+      setShipment(shipmentData);
+      setError(null);
+    } catch (err) {
+      setError('فشل في تحميل تفاصيل الطلب');
+      console.error('Error fetching order details:', err);
+      toast.error('فشل في تحميل تفاصيل الطلب');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleStatusUpdate = async (newStatus) => {
-    if (!window.confirm(`هل أنت متأكد من تغيير حالة الطلب إلى "${newStatus}"؟`)) {
-      return;
-    }
-    
     try {
-      setUpdateLoading(true);
-      await updateOrderStatus(orderId, newStatus);
-      
-      // Actualizar el pedido en el estado
-      setOrder(prev => ({
-        ...prev,
-        status: newStatus
-      }));
+      setActionLoading(true);
+      await updateOrderStatus(id, newStatus);
+      await fetchOrderDetails();
+      toast.success('تم تحديث حالة الطلب بنجاح');
     } catch (err) {
-      setError('فشل تحديث حالة الطلب');
-      console.error('Order status update error:', err);
+      toast.error('فشل في تحديث حالة الطلب');
+      console.error('Error updating order status:', err);
     } finally {
-      setUpdateLoading(false);
+      setActionLoading(false);
     }
   };
 
-  const handleFulfillment = async (fulfillmentData) => {
-    try {
-      setUpdateLoading(true);
-      await createFulfillment(orderId, fulfillmentData);
-      
-      // Recargar el pedido para obtener los datos actualizados
-      const updatedOrder = await getOrder(orderId);
-      setOrder(updatedOrder);
-      
-      setShowFulfillmentModal(false);
-    } catch (err) {
-      setError('فشل إنشاء تسليم للطلب');
-      console.error('Fulfillment creation error:', err);
-    } finally {
-      setUpdateLoading(false);
-    }
-  };
-
-  const formatCurrency = (amount, currency = 'USD') => {
-    return new Intl.NumberFormat('ar-AE', {
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('ar-SA', {
       style: 'currency',
-      currency,
-    }).format(amount);
+      currency: 'SAR'
+    }).format(price);
   };
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('ar-AE', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+  const getStatusColor = (status) => {
+    const colors = {
+      pending: 'bg-yellow-100 text-yellow-800',
+      confirmed: 'bg-blue-100 text-blue-800',
+      processing: 'bg-purple-100 text-purple-800',
+      shipped: 'bg-indigo-100 text-indigo-800',
+      delivered: 'bg-green-100 text-green-800',
+      cancelled: 'bg-red-100 text-red-800',
+      returned: 'bg-gray-100 text-gray-800'
+    };
+    return colors[status] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getStatusText = (status) => {
+    const texts = {
+      pending: 'قيد الانتظار',
+      confirmed: 'مؤكد',
+      processing: 'قيد المعالجة',
+      shipped: 'تم الشحن',
+      delivered: 'تم التسليم',
+      cancelled: 'ملغى',
+      returned: 'مرتجع'
+    };
+    return texts[status] || status;
   };
 
   if (loading) {
     return (
       <Layout>
-        <div className="flex justify-center items-center h-64">
-          <Loader size="lg" />
+        <div className="min-h-screen bg-gray-100 py-8">
+          <div className="container mx-auto px-4">
+            <Loader text="جاري تحميل تفاصيل الطلب..." />
+          </div>
         </div>
       </Layout>
     );
   }
 
-  if (!order && !loading) {
+  if (error) {
     return (
       <Layout>
-        <div className="p-6">
-          <Alert type="error" message="الطلب غير موجود" />
-          <div className="mt-4">
-            <Button onClick={() => navigate('/orders')}>
-              العودة إلى قائمة الطلبات
-            </Button>
+        <div className="min-h-screen bg-gray-100 py-8">
+          <div className="container mx-auto px-4">
+            <Alert variant="error" title="خطأ" message={error} />
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (!order) {
+    return (
+      <Layout>
+        <div className="min-h-screen bg-gray-100 py-8">
+          <div className="container mx-auto px-4">
+            <Alert 
+              variant="warning" 
+              title="الطلب غير موجود" 
+              message="لم يتم العثور على الطلب المطلوب"
+            />
           </div>
         </div>
       </Layout>
@@ -121,339 +130,288 @@ const OrderDetail = () => {
 
   return (
     <Layout>
-      <div className="p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">
-            تفاصيل الطلب #{order.orderNumber}
-          </h1>
-          <div className="flex space-x-3 space-x-reverse">
-            <Button
-              variant="secondary"
-              onClick={() => navigate('/orders')}
-            >
-              العودة إلى القائمة
-            </Button>
-            
-            {order.status !== 'cancelled' && (
-              <Button
-                variant="danger"
-                onClick={() => handleStatusUpdate('cancelled')}
-                loading={updateLoading}
-                disabled={updateLoading}
+      <div className="min-h-screen bg-gray-100 py-8">
+        <div className="container mx-auto px-4">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={() => navigate('/orders')}
+                className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
               >
-                إلغاء الطلب
-              </Button>
-            )}
-            
-            {order.status === 'pending' && (
-              <Button
-                onClick={() => handleStatusUpdate('processing')}
-                loading={updateLoading}
-                disabled={updateLoading}
-              >
-                بدء المعالجة
-              </Button>
-            )}
-            
-            {order.status === 'processing' && (
-              <Button
-                onClick={() => setShowFulfillmentModal(true)}
-                loading={updateLoading}
-                disabled={updateLoading}
-              >
-                شحن الطلب
-              </Button>
-            )}
-            
-            {order.status === 'shipped' && (
-              <Button
-                onClick={() => handleStatusUpdate('delivered')}
-                loading={updateLoading}
-                disabled={updateLoading}
-              >
-                تأكيد التسليم
-              </Button>
-            )}
-          </div>
-        </div>
-        
-        {error && <Alert type="error" message={error} className="mb-4" />}
-        
-        {/* Estado del pedido */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">حالة الطلب</h2>
-            <span
-              className={`px-3 py-1 inline-flex text-sm font-semibold rounded-full ${
-                order.status === 'pending'
-                  ? 'bg-yellow-100 text-yellow-800'
-                  : order.status === 'processing'
-                  ? 'bg-blue-100 text-blue-800'
-                  : order.status === 'shipped'
-                  ? 'bg-indigo-100 text-indigo-800'
-                  : order.status === 'delivered'
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-red-100 text-red-800'
-              }`}
-            >
-              {order.status === 'pending'
-                ? 'قيد الانتظار'
-                : order.status === 'processing'
-                ? 'قيد المعالجة'
-                : order.status === 'shipped'
-                ? 'تم الشحن'
-                : order.status === 'delivered'
-                ? 'تم التسليم'
-                : 'ملغي'}
-            </span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-            <div>
-              <p className="text-gray-600">المتجر</p>
-              <p className="font-medium">{order.store.name}</p>
-            </div>
-            <div>
-              <p className="text-gray-600">تاريخ الطلب</p>
-              <p className="font-medium">{formatDate(order.createdAt)}</p>
-            </div>
-            <div>
-              <p className="text-gray-600">رقم الطلب في المتجر</p>
-              <p className="font-medium">{order.externalOrderId || 'غير محدد'}</p>
+                <FiArrowRight className="w-5 h-5" />
+                العودة إلى الطلبات
+              </button>
+              <h1 className="text-2xl font-bold text-gray-900">
+                تفاصيل الطلب #{order.display_id}
+              </h1>
             </div>
           </div>
-        </div>
-        
-        {/* Información del cliente */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold mb-4">معلومات العميل</h2>
-            <div className="text-sm">
-              <p className="mb-2">
-                <span className="text-gray-600">الاسم:</span>{' '}
-                <span className="font-medium">{order.customer.name}</span>
-              </p>
-              <p className="mb-2">
-                <span className="text-gray-600">البريد الإلكتروني:</span>{' '}
-                <span className="font-medium">{order.customer.email}</span>
-              </p>
-              <p className="mb-2">
-                <span className="text-gray-600">الهاتف:</span>{' '}
-                <span className="font-medium">{order.customer.phone || 'غير محدد'}</span>
-              </p>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold mb-4">معلومات الشحن</h2>
-            <div className="text-sm">
-              <p className="mb-2">
-                <span className="text-gray-600">العنوان:</span>{' '}
-                <span className="font-medium">
-                  {order.shippingAddress.address}, {order.shippingAddress.city}
-                </span>
-              </p>
-              <p className="mb-2">
-                <span className="text-gray-600">المدينة / البلد:</span>{' '}
-                <span className="font-medium">
-                  {order.shippingAddress.city}, {order.shippingAddress.country}
-                </span>
-              </p>
-              <p className="mb-2">
-                <span className="text-gray-600">الرمز البريدي:</span>{' '}
-                <span className="font-medium">{order.shippingAddress.postalCode || 'غير محدد'}</span>
-              </p>
-            </div>
-          </div>
-        </div>
-        
-        {/* Productos del pedido */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">المنتجات</h2>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    المنتج
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    الكمية
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    السعر الإفرادي
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    الإجمالي
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {order.items.map((item) => (
-                  <tr key={item.id}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        {item.product.imageUrl && (
-                          <img
-                            src={item.product.imageUrl}
-                            alt={item.product.name}
-                            className="h-10 w-10 rounded-full mr-3"
-                          />
-                        )}
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {item.product.name}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            SKU: {item.product.sku}
-                          </div>
-                          {item.variantName && (
-                            <div className="text-sm text-gray-500">
-                              {item.variantName}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.quantity}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatCurrency(item.price, order.currency)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatCurrency(item.price * item.quantity, order.currency)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="bg-gray-50">
-                <tr>
-                  <td colSpan="2" className="px-6 py-4 whitespace-nowrap"></td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    المجموع الفرعي
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatCurrency(order.subtotalAmount, order.currency)}
-                  </td>
-                </tr>
-                <tr>
-                  <td colSpan="2" className="px-6 py-4 whitespace-nowrap"></td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    الضريبة
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatCurrency(order.taxAmount, order.currency)}
-                  </td>
-                </tr>
-                <tr>
-                  <td colSpan="2" className="px-6 py-4 whitespace-nowrap"></td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    الشحن
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatCurrency(order.shippingAmount, order.currency)}
-                  </td>
-                </tr>
-                <tr>
-                    <td colSpan="2" className="px-6 py-4 whitespace-nowrap"></td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        المجموع الكلي
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatCurrency(order.totalAmount, order.currency)}
-                    </td>
-                    </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>
-        
-        {/* Información de envío si está enviado */}
-        {order.fulfillments && order.fulfillments.length > 0 && (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">معلومات الشحن</h2>
-            <div className="space-y-4">
-              {order.fulfillments.map((fulfillment) => (
-                <div key={fulfillment.id} className="border border-gray-200 rounded-md p-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                    <div>
-                      <p className="text-gray-600 text-sm">رقم التتبع</p>
-                      <p className="font-medium">{fulfillment.trackingNumber || 'غير محدد'}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600 text-sm">شركة الشحن</p>
-                      <p className="font-medium">{fulfillment.carrier || 'غير محدد'}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600 text-sm">تاريخ الشحن</p>
-                      <p className="font-medium">{formatDate(fulfillment.createdAt)}</p>
-                    </div>
-                  </div>
-                  {fulfillment.trackingUrl && (
-                    <div className="mt-2">
-                      
-                        href={fulfillment.trackingUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800"
-                      >
-                        تتبع الشحنة
-                      </a>
-                    </div>
-                  )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Main Content */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Order Info Card */}
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900">معلومات الطلب</h2>
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
+                    {getStatusText(order.status)}
+                  </span>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-        
-        {/* Historial de cambios */}
-        {order.statusHistory && order.statusHistory.length > 0 && (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold mb-4">سجل الحالة</h2>
-            <div className="space-y-4">
-              {order.statusHistory.map((statusChange, index) => (
-                <div key={index} className="flex items-start">
-                  <div className="flex-shrink-0 h-4 w-4 mt-1 rounded-full bg-blue-500"></div>
-                  <div className="mr-4">
-                    <p className="font-medium">
-                      {statusChange.status === 'pending'
-                        ? 'قيد الانتظار'
-                        : statusChange.status === 'processing'
-                        ? 'قيد المعالجة'
-                        : statusChange.status === 'shipped'
-                        ? 'تم الشحن'
-                        : statusChange.status === 'delivered'
-                        ? 'تم التسليم'
-                        : 'ملغي'}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 mb-2">تاريخ الطلب</h3>
+                    <p className="text-base text-gray-900">
+                      {format(new Date(order.created_at), 'PPp', { locale: ar })}
                     </p>
-                    <p className="text-sm text-gray-500">
-                      {formatDate(statusChange.timestamp)}
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 mb-2">المتجر</h3>
+                    <p className="text-base text-gray-900">{order.marketplace_name}</p>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 mb-2">العملة</h3>
+                    <p className="text-base text-gray-900">{order.currency}</p>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 mb-2">نوع الدفع</h3>
+                    <p className="text-base text-gray-900">{order.payment_method}</p>
+                  </div>
+                </div>
+
+                {/* Order Items */}
+                <div className="mt-8">
+                  <h3 className="text-sm font-medium text-gray-500 mb-4">المنتجات</h3>
+                  <div className="border rounded-lg">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            المنتج
+                          </th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            الكمية
+                          </th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            السعر
+                          </th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            المجموع
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {order.items.map((item, index) => (
+                          <tr key={index}>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className="h-10 w-10 flex-shrink-0">
+                                  <img 
+                                    className="h-10 w-10 rounded-md object-cover" 
+                                    src={item.product_image || '/placeholder-product.jpg'} 
+                                    alt={item.product_name}
+                                  />
+                                </div>
+                                <div className="mr-4">
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {item.product_name}
+                                  </div>
+                                  {item.variant_name && (
+                                    <div className="text-sm text-gray-500">
+                                      {item.variant_name}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {item.quantity}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {formatPrice(item.unit_price)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {formatPrice(item.quantity * item.unit_price)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              {/* Customer Info Card */}
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-6">معلومات العميل</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 mb-2">الاسم</h3>
+                    <p className="text-base text-gray-900">{order.customer_name}</p>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 mb-2">البريد الإلكتروني</h3>
+                    <p className="text-base text-gray-900">{order.customer_email}</p>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 mb-2">رقم الهاتف</h3>
+                    <p className="text-base text-gray-900">{order.customer_phone}</p>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 mb-2">العنوان</h3>
+                    <p className="text-base text-gray-900 whitespace-pre-line">
+                      {order.customer_address}
                     </p>
-                    {statusChange.note && (
-                      <p className="text-sm text-gray-600 mt-1">{statusChange.note}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Shipping Info Card */}
+              {shipment && (
+                <div className="bg-white rounded-lg shadow-sm p-6">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-6">معلومات الشحن</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-2">رقم الشحنة</h3>
+                      <p className="text-base text-gray-900">{shipment.tracking_number}</p>
+                    </div>
+
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-2">شركة الشحن</h3>
+                      <p className="text-base text-gray-900">{shipment.carrier}</p>
+                    </div>
+
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-2">حالة الشحنة</h3>
+                      <p className="text-base text-gray-900">{shipment.status}</p>
+                    </div>
+
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-2">تاريخ الشحن</h3>
+                      <p className="text-base text-gray-900">
+                        {format(new Date(shipment.shipped_at), 'PPp', { locale: ar })}
+                      </p>
+                    </div>
+
+                    {shipment.tracking_url && (
+                      <div className="col-span-2">
+                        <h3 className="text-sm font-medium text-gray-500 mb-2">رابط التتبع</h3>
+                        <a 
+                          href={shipment.tracking_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-base text-blue-600 hover:text-blue-800"
+                        >
+                          تتبع الشحنة
+                        </a>
+                      </div>
                     )}
                   </div>
                 </div>
-              ))}
+              )}
+            </div>
+
+            {/* Sidebar */}
+            <div className="lg:col-span-1">
+              {/* Summary Card */}
+              <div className="bg-white rounded-lg shadow-sm p-6 sticky top-4">
+                <h2 className="text-lg font-semibold text-gray-900 mb-6">ملخص الطلب</h2>
+                
+                <div className="space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">المجموع الفرعي:</span>
+                    <span className="text-gray-900">{formatPrice(order.subtotal)}</span>
+                  </div>
+                  
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">الخصم:</span>
+                    <span className="text-gray-900">-{formatPrice(order.discount)}</span>
+                  </div>
+                  
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">الشحن:</span>
+                    <span className="text-gray-900">{formatPrice(order.shipping_fee)}</span>
+                  </div>
+                  
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">الضريبة:</span>
+                    <span className="text-gray-900">{formatPrice(order.tax)}</span>
+                  </div>
+                  
+                  <div className="border-t pt-3 mt-3">
+                    <div className="flex justify-between text-base font-semibold">
+                      <span className="text-gray-900">المجموع الكلي:</span>
+                      <span className="text-gray-900">{formatPrice(order.total)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="mt-8 space-y-3">
+                  {order.status === 'pending' && (
+                    <button
+                      onClick={() => handleStatusUpdate('confirmed')}
+                      disabled={actionLoading}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                    >
+                      <FiCheckCircle className="w-4 h-4" />
+                      تأكيد الطلب
+                    </button>
+                  )}
+
+                  {order.status === 'confirmed' && (
+                    <button
+                      onClick={() => handleStatusUpdate('processing')}
+                      disabled={actionLoading}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
+                    >
+                      <FiPackage className="w-4 h-4" />
+                      بدء التجهيز
+                    </button>
+                  )}
+
+                  {order.status === 'processing' && (
+                    <Link
+                      to={`/orders/${id}/ship`}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                      <FiTruck className="w-4 h-4" />
+                      شحن الطلب
+                    </Link>
+                  )}
+
+                  {(['pending', 'confirmed'].includes(order.status)) && (
+                    <button
+                      onClick={() => handleStatusUpdate('cancelled')}
+                      disabled={actionLoading}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                    >
+                      <FiXCircle className="w-4 h-4" />
+                      إلغاء الطلب
+                    </button>
+                  )}
+                </div>
+
+                {/* Order Notes */}
+                {order.notes && (
+                  <div className="mt-6 pt-6 border-t">
+                    <h3 className="text-sm font-medium text-gray-500 mb-2">ملاحظات الطلب</h3>
+                    <p className="text-sm text-gray-900 whitespace-pre-line">{order.notes}</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        )}
+        </div>
       </div>
-      
-      {/* Modal de envío */}
-      <Modal
-        isOpen={showFulfillmentModal}
-        onClose={() => setShowFulfillmentModal(false)}
-        title="إنشاء شحنة"
-      >
-        <FulfillmentForm
-          orderId={orderId}
-          onSubmit={handleFulfillment}
-          onCancel={() => setShowFulfillmentModal(false)}
-          loading={updateLoading}
-        />
-      </Modal>
     </Layout>
   );
 };
