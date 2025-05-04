@@ -1,0 +1,21 @@
+.app {
+  min-height: 100vh;
+  background-color: #f5f5f5;
+}
+
+/* أنماات مخصصة للوضع اليمين إلى اليسار */
+.rtl-container {
+  direction: rtl;
+}
+
+/* تخصيص رسائل الأخطاء */
+.error-message {
+  color: #e3342f;
+  margin-bottom: 1rem;
+}
+
+/* تخصيص الرسائل النجاح */
+.success-message {
+  color: #38c172;
+  margin-bottom: 1rem;
+}

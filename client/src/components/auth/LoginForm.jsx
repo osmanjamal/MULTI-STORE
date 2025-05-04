@@ -84,9 +84,8 @@ const LoginForm = () => {
           
             href="/forgot-password"
             className="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800"
-          >
-            نسيت كلمة المرور؟
-          </a>
+           
+
         </div>
       </form>
     </div>

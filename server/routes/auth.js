@@ -13,9 +13,11 @@ router.post('/login', loginLimiter, validate(schemas.user.login), authController
 router.post('/logout', auth, authController.logout);
 router.get('/me', auth, authController.getMe);
 
-// إدارة المستخدمين
-router.get('/profile', auth, userController.getProfile);
-router.put('/profile', auth, validate(schemas.user.update), userController.updateProfile);
-router.put('/password', auth, userController.updatePassword);
+// إدارة المستخدمين (استخدام الدوال الموجودة)
+router.get('/users', auth, userController.getAllUsers);
+router.get('/users/:id', auth, userController.getUserById);
+router.put('/users/:id', auth, validate(schemas.user.update), userController.updateUser);
+router.put('/users/:id/role', auth, userController.updateUserRole);
+router.delete('/users/:id', auth, userController.deleteUser);
 
 module.exports = router;

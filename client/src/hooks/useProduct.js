@@ -1,19 +1,14 @@
 import { useContext } from 'react';
 import { ProductContext } from '../context/ProductContext';
 
-/**
- * خطاف للوصول إلى سياق المنتجات
- * يوفر وظائف وبيانات المنتجات
- * @returns {Object} كائن يحتوي على بيانات ووظائف المنتجات
- */
-const useProduct = () => {
-  const product = useContext(ProductContext);
+export function useProduct() {
+  const context = useContext(ProductContext);
   
-  if (!product) {
-    throw new Error('يجب استخدام useProduct داخل ProductProvider');
+  if (context === undefined) {
+    throw new Error('useProduct must be used within a ProductProvider');
   }
   
-  return product;
-};
+  return context;
+}
 
 export default useProduct;

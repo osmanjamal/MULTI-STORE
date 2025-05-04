@@ -1,19 +1,14 @@
 import { useContext } from 'react';
 import { StoreContext } from '../context/StoreContext';
 
-/**
- * خطاف للوصول إلى سياق المتاجر
- * يوفر وظائف وبيانات المتاجر
- * @returns {Object} كائن يحتوي على بيانات ووظائف المتاجر
- */
-const useStore = () => {
-  const store = useContext(StoreContext);
+export function useStore() {
+  const context = useContext(StoreContext);
   
-  if (!store) {
-    throw new Error('يجب استخدام useStore داخل StoreProvider');
+  if (context === undefined) {
+    throw new Error('useStore must be used within a StoreProvider');
   }
   
-  return store;
-};
+  return context;
+}
 
 export default useStore;
